@@ -9,13 +9,13 @@ import asyncio
 import pathlib
 from typing import List, Dict, Any, Optional
 
-# 导入原始模块
-from OracleLang.src.calculator import HexagramCalculator
-from OracleLang.src.interpreter import HexagramInterpreter 
-from OracleLang.src.glyphs import HexagramRenderer
-from OracleLang.src.history import HistoryManager
-from OracleLang.src.limit import UsageLimit
-from OracleLang import config
+# 导入内部模块
+from src.calculator import HexagramCalculator
+from src.interpreter import HexagramInterpreter 
+from src.glyphs import HexagramRenderer
+from src.history import HistoryManager
+from src.limit import UsageLimit
+import config
 
 @register("oracle_lang", "errore, original by ydzat", "一个基于易经原理的智能算卦插件。支持多种起卦方式，提供专业的卦象解读。", "1.0.0")
 class OracleLangPlugin(Star):
