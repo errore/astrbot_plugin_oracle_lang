@@ -1,5 +1,6 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult 
 from astrbot.api.star import Context, Star, register
+from astrbot.api.message_components import Node, Plain
 from astrbot.api import logger
 
 import os
@@ -126,7 +127,7 @@ class OracleLangPlugin(Star):
             )
                 
             # 构建响应消息
-            result_msg = self._format_response(question, hexagram_data, interpretation, visual)
+            result = self._format_response(question, hexagram_data, interpretation, visual)
                 
             # 记录到历史
             self.history.save_record(
@@ -140,12 +141,40 @@ class OracleLangPlugin(Star):
             self.limit.update_usage(sender_id)
             remaining = self.limit.get_remaining(sender_id)
                 
-            # 添加使用次数提示
-            result_msg += f"\n\n今日剩余算卦次数: {remaining}/{self.config['limit']['daily_max']}"
+            # 添加使用次数提示到基本信息中
+            result["basic_info"] += f"\n\n今日剩余算卦次数: {remaining}/{self.config['limit']['daily_max']}"
                 
-            # 返回结果
-            yield event.plain_result(result_msg)
+            # 检查是否为群消息
+            if event.get_group_id() is not None:
+                # 使用合并转发消息
+                chain = Nodes([])
+                chain.nodes.append(Node(
+                        uin=event.get_self_id(),
+                        name=self.context.get_config().get("nickname", "算命大师"),
+                        content=[Plain(header + text)]
+                    ))
+                chain.nodes.append(Node(
+                        uin=self.context.get_self_id(),
+                        name=self.context.get_config().get("nickname", "算命大师"),
+                        content=[Plain(result["explanation"])]
+                    ))
+
+                yield event.chain_result(nodes)
+            else:
+                # 私聊消息直接发送完整内容
+                full_message = f"{result['basic_info']}\n\n{result['explanation']}"
+                yield event.plain_result(full_message)
+                        uin=self.context.get_self_id(),
+                        name=self.context.get_config().get("nickname", "算命大师"),
+                        content=[Plain(result["explanation"])]
+                    )
                 
+                yield event.chain_result(nodes)
+            else:
+                # 私聊消息直接发送完整内容
+                full_message = f"{result['basic_info']}\n\n{result['explanation']}"
+                yield event.plain_result(full_message)
+            event.stop_event()
         except Exception as e:
             logger.error(f"算卦过程出错: {str(e)}")
             yield event.plain_result(f"算卦过程出现错误: {str(e)}\n请稍后再试或联系管理员。")
@@ -169,33 +198,40 @@ class OracleLangPlugin(Star):
         
         return method, params, question
     
-    def _format_response(self, question: str, hexagram_data: Dict, interpretation: Dict, visual: str) -> str:
-        """格式化响应消息"""
+    def _format_response(self, question: str, hexagram_data: Dict, interpretation: Dict, visual: str) -> Dict[str, str]:
+        """格式化响应消息，返回基础信息和解释两部分"""
         original_name = interpretation["original"]["name"]
         changed_name = interpretation["changed"]["name"]
         
-        response = [
+        # 第一部分：基本信息
+        basic_info = [
             f"📝 问题: {question}" if question else "🔮 随缘一卦",
             f"\n{visual}",
             f"\n📌 卦象: {original_name} {'→' if hexagram_data['moving'].count(1) > 0 else ''} {changed_name if hexagram_data['moving'].count(1) > 0 else ''}",
             f"\n✨ 卦辞: {interpretation['original']['gua_ci']}",
         ]
-        
+
         # 动爻解释
         if hexagram_data['moving'].count(1) > 0:
-            response.append("\n🔄 动爻:")
+            basic_info.append("\n🔄 动爻:")
             for i, line in enumerate(interpretation["moving_lines_meaning"]):
                 if line:
-                    response.append(f"  {line}")
+                    basic_info.append(f"  {line}")
+
+        # 第二部分：解释和建议
+        explanation = []
         
         # 总体解释
-        response.append(f"\n📜 解释: {interpretation['overall_meaning']}")
+        explanation.append(f"\n📜 解释: {interpretation['overall_meaning']}")
         
         # 建议
         if "advice" in interpretation:
-            response.append(f"\n💡 建议: {interpretation['advice']}")
+            explanation.append(f"\n💡 建议: {interpretation['advice']}")
             
-        return "\n".join(response)
+        return {
+            "basic_info": "\n".join(basic_info),
+            "explanation": "\n".join(explanation)
+        }
     
     async def _show_history(self, event: AstrMessageEvent, user_id: str):
         """显示用户历史记录"""
