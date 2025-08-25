@@ -2,7 +2,14 @@
 
 这是一个基于易经原理的智能算卦插件，支持多种起卦方式，提供专业的卦象解读。本插件是从 [OracleLang](https://github.com/ydzat/OracleLang) 项目移植到 AstrBot 平台的版本。
 
-## 原作者声明
+## 移植清单
+
+- [x] 起卦功能
+- [x] LLM 解释功能
+- [ ] 菜单（存在报错）
+- [ ] 配置文件(待测试)
+
+## 声明
 
 - 原始项目: [OracleLang](https://github.com/ydzat/OracleLang)
 - 原作者: [@ydzat](https://github.com/ydzat)
