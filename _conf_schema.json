@@ -15,7 +15,7 @@
                 "description": "每日算卦次数限制",
                 "type": "int",
                 "hint": "每个用户每天可以算卦的最大次数",
-                "default": 20
+                "default": 3
             },
             "reset_time": {
                 "description": "每日重置时间(24小时制)",
@@ -45,8 +45,8 @@
                 "description": "卦象显示风格",
                 "type": "string",
                 "hint": "卦象显示的字符风格,可选 unicode(字符) 或 text(纯文本)",
-                "default": "unicode",
-                "options": ["unicode", "text"]
+                "default": "detailed",
+                "options": ["simple", "traditional", "detailed"]
             }
         }
     }

@@ -17,7 +17,6 @@ from .src.interpreter import HexagramInterpreter
 from .src.glyphs import HexagramRenderer
 from .src.history import HistoryManager
 from .src.limit import UsageLimit
-from . import config
 
 @register("oracle_lang", "errore, original by ydzat", "一个基于易经原理的智能算卦插件。支持多种起卦方式，提供专业的卦象解读。", "1.0.0")
 class OracleLangPlugin(Star):
@@ -38,6 +37,9 @@ class OracleLangPlugin(Star):
 
         # 初始化各模块
         self.config = config
+        self.use_llm = config["llm"]["enabled"]
+        logger.info(f"LLM 启用状态: {self.use_llm}")
+        self.admin_list = self.config.get("admin_users", [])
         self.calculator = HexagramCalculator()
         self.interpreter = HexagramInterpreter(self.config, self.plugin_dir)
         self.renderer = HexagramRenderer()
@@ -124,7 +126,8 @@ class OracleLangPlugin(Star):
                 hexagram_changed=hexagram_data["hexagram_changed"],
                 moving=hexagram_data["moving"],
                 question=question,
-                use_llm=self.config["llm"]["enabled"]
+                use_llm=self.use_llm,
+                context=self.context
             )
 
             # 构建并发送分段响应消息
@@ -292,7 +295,7 @@ class OracleLangPlugin(Star):
         admin_list = self.config.get("admin_users", [])
         return user_id in admin_list
 
-    async def _show_help(self, event: AstrMessageEvent):
+    def _show_help(self, event: AstrMessageEvent):
         """显示帮助信息"""
         help_text = [
             "📚 OracleLang 算卦插件使用指南 📚",
