@@ -1,6 +1,7 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult 
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
+from astrbot.api.message_components import Node, Plain, Nodes
 
 import os
 import re
@@ -23,7 +24,7 @@ class OracleLangPlugin(Star):
     # 命令前缀
     CMD_PREFIX = "算卦"
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         logger.info("OracleLang 插件初始化中...")
 
@@ -36,7 +37,7 @@ class OracleLangPlugin(Star):
         os.makedirs(os.path.join(self.plugin_dir, "data/limits"), exist_ok=True)
 
         # 初始化各模块
-        self.config = config.load_config(self.plugin_dir)
+        self.config = config
         self.calculator = HexagramCalculator()
         self.interpreter = HexagramInterpreter(self.config, self.plugin_dir)
         self.renderer = HexagramRenderer()
@@ -129,19 +130,6 @@ class OracleLangPlugin(Star):
             # 构建并发送分段响应消息
             messages = self._format_response(question, hexagram_data, interpretation, visual)
 
-            # 发送第一部分: 卦象和动爻
-            yield event.plain_result(messages["part1"])
-            await asyncio.sleep(random.uniform(0.3, 0.8))
-
-            # 发送第二部分: 解释
-            yield event.plain_result(messages["part2"])
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-
-            # 发送第三部分: 建议
-            if messages.get("part3"):
-                yield event.plain_result(messages["part3"])
-                await asyncio.sleep(random.uniform(0.3, 0.8))
-
             # 记录到历史
             self.history.save_record(
                 user_id=sender_id,
@@ -153,6 +141,31 @@ class OracleLangPlugin(Star):
             # 更新用户使用次数
             self.limit.update_usage(sender_id)
             remaining = self.limit.get_remaining(sender_id)
+            chain = Nodes([])
+            # 发送第一部分: 卦象和动爻
+            node = Node(
+                uin=event.get_self_id(),
+                name="算命大师",
+                content=[Plain(messages["part1"])]
+            )
+            chain.nodes.append(node)
+            # 发送第二部分: 解释
+            node = Node(
+                uin=event.get_self_id(),
+                name="算命大师",
+                content=[Plain(messages["part2"])]
+            )
+            chain.nodes.append(node)
+            # 发送第三部分: 建议
+            if messages.get("part3"):
+                node = Node(
+                    uin=event.get_self_id(),
+                    name="算命大师",
+                    content=[Plain(messages["part3"])]
+                )
+                chain.nodes.append(node)
+
+            yield event.chain_result([chain])
 
             # 添加使用次数提示
             yield event.plain_result(f"今日剩余算卦次数: {remaining}/{self.config['limit']['daily_max']}")
