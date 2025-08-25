@@ -7,11 +7,12 @@ import re
 import time
 import asyncio
 import pathlib
+import random
 from typing import List, Dict, Any, Optional
 
 # 导入内部模块
 from .src.calculator import HexagramCalculator
-from .src.interpreter import HexagramInterpreter 
+from .src.interpreter import HexagramInterpreter
 from .src.glyphs import HexagramRenderer
 from .src.history import HistoryManager
 from .src.limit import UsageLimit
@@ -25,15 +26,15 @@ class OracleLangPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         logger.info("OracleLang 插件初始化中...")
-        
+
         # 获取插件所在目录
         self.plugin_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         # 确保数据目录存在
         os.makedirs(os.path.join(self.plugin_dir, "data/history"), exist_ok=True)
         os.makedirs(os.path.join(self.plugin_dir, "data/static"), exist_ok=True)
         os.makedirs(os.path.join(self.plugin_dir, "data/limits"), exist_ok=True)
-        
+
         # 初始化各模块
         self.config = config.load_config(self.plugin_dir)
         self.calculator = HexagramCalculator()
@@ -41,12 +42,12 @@ class OracleLangPlugin(Star):
         self.renderer = HexagramRenderer()
         self.history = HistoryManager(os.path.join(self.plugin_dir, "data/history"))
         self.limit = UsageLimit(self.config, os.path.join(self.plugin_dir, "data/limits"))
-        
+
         logger.info("OracleLang 插件初始化完成")
-        
+
         # 加载数据
         asyncio.create_task(self._initialize())
-    
+
     async def _initialize(self):
         # 加载静态数据
         logger.info("正在加载卦象数据...")
@@ -59,45 +60,45 @@ class OracleLangPlugin(Star):
         # 清理文本，移除@信息
         msg = event.message_str
         sender_id = event.get_sender_id()
-            
+
         # 清理文本，移除@信息和命令前缀
         cleaned_text = re.sub(r'@\S+\s*', '', msg).strip()
         if not cleaned_text.startswith(self.CMD_PREFIX):
             return
-                
+
         # 提取命令参数
         cmd_args = cleaned_text[len(self.CMD_PREFIX):].strip()
-            
+
         # 处理帮助命令
         if cmd_args.strip() == "帮助":
             await self._show_help(event)
             return
-            
+
         # 处理用户ID查询命令
         if cmd_args.strip() == "我的ID":
             yield event.plain_result(f"您的用户ID是: {sender_id}")
             return
-            
+
         # 处理管理命令（仅管理员可用）
         if self._is_admin(sender_id) and (cmd_args.startswith("设置") or cmd_args.startswith("重置") or cmd_args.startswith("统计")):
             await self._handle_admin_commands(event, cmd_args)
             return
-            
+
         # 检查用户当日使用次数
         if not self.limit.check_user_limit(sender_id):
             remaining_time = self.limit.get_reset_time()
             yield event.plain_result(f"您今日的算卦次数已达上限（{self.config['limit']['daily_max']}次/天），请等待重置。\n"
                                   f"下次重置时间: {remaining_time}")
             return
-                
+
         # 解析命令参数
         method, params, question = self._parse_command(cmd_args)
-            
+
         # 处理历史记录查询
         if method == "历史":
             await self._show_history(event, sender_id)
             return
-                
+
         # 生成卦象
         try:
             logger.info(f"用户 {sender_id} 使用方法 {method} 算卦，参数：{params}，问题：{question}")
@@ -106,7 +107,7 @@ class OracleLangPlugin(Star):
                 input_text=params or question,
                 user_id=sender_id
             )
-                
+
             # 生成卦象图示
             style = self.config["display"]["style"]
             visual = self.renderer.render_hexagram(
@@ -115,7 +116,7 @@ class OracleLangPlugin(Star):
                 hexagram_data["moving"],
                 style=style
             )
-                
+
             # 获取卦象解释
             interpretation = await self.interpreter.interpret(
                 hexagram_original=hexagram_data["hexagram_original"],
@@ -124,10 +125,23 @@ class OracleLangPlugin(Star):
                 question=question,
                 use_llm=self.config["llm"]["enabled"]
             )
-                
-            # 构建响应消息
-            result_msg = self._format_response(question, hexagram_data, interpretation, visual)
-                
+
+            # 构建并发送分段响应消息
+            messages = self._format_response(question, hexagram_data, interpretation, visual)
+
+            # 发送第一部分: 卦象和动爻
+            yield event.plain_result(messages["part1"])
+            await asyncio.sleep(random.uniform(0.3, 0.8))
+
+            # 发送第二部分: 解释
+            yield event.plain_result(messages["part2"])
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+
+            # 发送第三部分: 建议
+            if messages.get("part3"):
+                yield event.plain_result(messages["part3"])
+                await asyncio.sleep(random.uniform(0.3, 0.8))
+
             # 记录到历史
             self.history.save_record(
                 user_id=sender_id,
@@ -135,17 +149,14 @@ class OracleLangPlugin(Star):
                 hexagram_data=hexagram_data,
                 interpretation=interpretation
             )
-                
+
             # 更新用户使用次数
             self.limit.update_usage(sender_id)
             remaining = self.limit.get_remaining(sender_id)
-                
+
             # 添加使用次数提示
-            result_msg += f"\n\n今日剩余算卦次数: {remaining}/{self.config['limit']['daily_max']}"
-                
-            # 返回结果
-            yield event.plain_result(result_msg)
-                
+            yield event.plain_result(f"今日剩余算卦次数: {remaining}/{self.config['limit']['daily_max']}")
+
         except Exception as e:
             logger.error(f"算卦过程出错: {str(e)}")
             yield event.plain_result(f"算卦过程出现错误: {str(e)}\n请稍后再试或联系管理员。")
@@ -154,11 +165,11 @@ class OracleLangPlugin(Star):
         """解析命令参数，返回 (起卦方法, 方法参数, 问题)"""
         # 支持的起卦方法
         methods = ["数字", "时间", "历史"]
-        
+
         method = "text"  # 默认为文本起卦
         params = None
         question = cmd_args
-        
+
         # 检查是否指定了起卦方法
         parts = cmd_args.split(maxsplit=2)
         if parts and parts[0] in methods:
@@ -166,36 +177,48 @@ class OracleLangPlugin(Star):
             if len(parts) >= 2:
                 params = parts[1]
                 question = parts[2] if len(parts) >= 3 else ""
-        
+
         return method, params, question
-    
-    def _format_response(self, question: str, hexagram_data: Dict, interpretation: Dict, visual: str) -> str:
-        """格式化响应消息"""
+
+    def _format_response(self, question: str, hexagram_data: Dict, interpretation: Dict, visual: str) -> Dict[str, str]:
+        """格式化响应消息,返回分段消息字典"""
         original_name = interpretation["original"]["name"]
         changed_name = interpretation["changed"]["name"]
-        
-        response = [
+
+        # 第一部分：卦象和动爻
+        part1 = [
             f"📝 问题: {question}" if question else "🔮 随缘一卦",
             f"\n{visual}",
             f"\n📌 卦象: {original_name} {'→' if hexagram_data['moving'].count(1) > 0 else ''} {changed_name if hexagram_data['moving'].count(1) > 0 else ''}",
             f"\n✨ 卦辞: {interpretation['original']['gua_ci']}",
         ]
-        
-        # 动爻解释
+
+        # 添加动爻解释
         if hexagram_data['moving'].count(1) > 0:
-            response.append("\n🔄 动爻:")
+            part1.append("\n🔄 动爻:")
             for i, line in enumerate(interpretation["moving_lines_meaning"]):
                 if line:
-                    response.append(f"  {line}")
-        
-        # 总体解释
-        response.append(f"\n📜 解释: {interpretation['overall_meaning']}")
-        
-        # 建议
+                    part1.append(f"  {line}")
+
+        # 第二部分：总体解释
+        part2 = [
+            "📜 解释:",
+            interpretation['overall_meaning']
+        ]
+
+        # 第三部分：建议（如果有）
+        part3 = None
         if "advice" in interpretation:
-            response.append(f"\n💡 建议: {interpretation['advice']}")
-            
-        return "\n".join(response)
+            part3 = [
+                "💡 建议:",
+                interpretation['advice']
+            ]
+
+        return {
+            "part1": "\n".join(part1),
+            "part2": "\n".join(part2),
+            "part3": "\n".join(part3) if part3 else None
+        }
     
     async def _show_history(self, event: AstrMessageEvent, user_id: str):
         """显示用户历史记录"""
