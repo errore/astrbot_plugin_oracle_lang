@@ -1,0 +1,53 @@
+{
+    "admin_users": {
+        "description": "管理员用户ID列表",
+        "type": "list",
+        "items": {
+            "type": "string"
+        },
+        "hint": "管理员用户的ID列表,这些用户可以执行管理员命令"
+    },
+    "limit": {
+        "description": "使用限制相关配置",
+        "type": "object", 
+        "items": {
+            "daily_max": {
+                "description": "每日算卦次数限制",
+                "type": "int",
+                "hint": "每个用户每天可以算卦的最大次数",
+                "default": 20
+            },
+            "reset_time": {
+                "description": "每日重置时间(24小时制)",
+                "type": "int",
+                "hint": "每天几点重置算卦次数,例如0表示0点重置",
+                "default": 0
+            }
+        }
+    },
+    "llm": {
+        "description": "大语言模型相关配置",
+        "type": "object",
+        "items": {
+            "enabled": {
+                "description": "是否启用大语言模型解释",
+                "type": "bool",
+                "hint": "启用后会使用大语言模型解释卦象",
+                "default": false
+            }
+        }
+    },
+    "display": {
+        "description": "显示相关配置",
+        "type": "object",
+        "items": {
+            "style": {
+                "description": "卦象显示风格",
+                "type": "string",
+                "hint": "卦象显示的字符风格,可选 unicode(字符) 或 text(纯文本)",
+                "default": "unicode",
+                "options": ["unicode", "text"]
+            }
+        }
+    }
+}
