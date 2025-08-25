@@ -55,10 +55,10 @@ class OracleLangPlugin(Star):
         logger.info("卦象数据加载完成")
 
     @filter.command(CMD_PREFIX)
-    async def oracle(self, event: AstrMessageEvent):
+    async def oracle(self, event: AstrMessageEvent, text: str = ""):
         """这是一个易经算卦命令""" # 命令描述
         # 清理文本，移除@信息
-        msg = event.message_str
+        msg = text
         sender_id = event.get_sender_id()
             
         # 清理文本，移除@信息和命令前缀
